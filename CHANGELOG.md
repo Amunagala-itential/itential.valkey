@@ -1,0 +1,7 @@
+# Changelog
+
+## 1.0.0
+
+Initial release. Adds the `valkey` role and its playbooks (`valkey.yml`, `verify_valkey.yml`,
+`certify_valkey.yml`, `download_packages_valkey.yml`) as a Remi-free, EL9/Amazon Linux 2023-only
+alternative to `itential.deployer`'s `redis` role.

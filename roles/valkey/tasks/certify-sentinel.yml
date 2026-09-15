@@ -1,0 +1,378 @@
+# Copyright (c) 2026, Itential, Inc
+# GNU General Public License v3.0+ (see LICENSE or https://www.gnu.org/licenses/gpl-3.0.txt)
+---
+
+- name: Ensure report directory exists
+  ansible.builtin.file:
+    path: "{{ valkey_sentinel_certify_report_dir_remote }}"
+    state: directory
+    owner: "{{ valkey_owner }}"
+    group: "{{ valkey_group }}"
+    mode: "0755"
+
+- name: Set report filename
+  ansible.builtin.set_fact:
+    valkey_sentinel_certify_report_file: "{{ valkey_sentinel_certify_report_dir_remote }}/sentinel-report-{{ inventory_hostname }}.md"
+
+- name: Gather host information
+  itential.deployer.gather_host_information:
+  register: valkey_host_details
+
+- name: Check if Sentinel service exists
+  ansible.builtin.systemd:
+    name: valkey-sentinel
+  register: valkey_sentinel_service_check
+  failed_when: false
+  changed_when: false
+
+- name: Check Sentinel process
+  ansible.builtin.shell: set -o pipefail && ps aux | grep valkey-sentinel | grep -v grep
+  register: valkey_sentinel_process
+  failed_when: false
+  changed_when: false
+
+- name: Test Sentinel connectivity
+  ansible.builtin.shell: |
+    set -o pipefail &&
+    {{ valkey_bin_dir }}/valkey-cli \
+      {% if valkey_tls_enabled | bool %}--tls --cacert {{ valkey_tls_ca_dest }}{% endif %} \
+      --user admin \
+      -p {{ valkey_sentinel_port }} \
+      -h "{{ inventory_hostname }}" \
+      -a "{{ valkey_user_sentineladmin_password }}" \
+      --no-auth-warning \
+      PING
+  register: valkey_sentinel_ping
+  failed_when: false
+  changed_when: false
+
+- name: Set Sentinel detection fact
+  ansible.builtin.set_fact:
+    valkey_sentinel_is_running: "{{ valkey_sentinel_ping.rc == 0 and valkey_sentinel_process.rc == 0 }}"
+
+- name: Display Sentinel detection status
+  ansible.builtin.debug:
+    msg: "Sentinel detected: {{ valkey_sentinel_is_running }}"
+
+- name: Get Sentinel service status
+  ansible.builtin.systemd:
+    name: valkey-sentinel
+  register: valkey_sentinel_service_status
+  when:
+    - valkey_sentinel_is_running | bool
+    - valkey_sentinel_service_check.status is defined
+  failed_when: false
+
+- name: Get Sentinel INFO
+  ansible.builtin.shell: |
+    set -o pipefail &&
+    {{ valkey_bin_dir }}/valkey-cli \
+      {% if valkey_tls_enabled | bool %}--tls --cacert {{ valkey_tls_ca_dest }}{% endif %} \
+      --json \
+      --user admin \
+      -p {{ valkey_sentinel_port }} \
+      -h "{{ inventory_hostname }}" \
+      -a "{{ valkey_user_sentineladmin_password }}" \
+      --no-auth-warning \
+      INFO
+  register: valkey_sentinel_info
+  when: valkey_sentinel_is_running | bool
+  changed_when: false
+
+- name: Get Sentinel masters
+  ansible.builtin.shell: |
+    set -o pipefail &&
+    {{ valkey_bin_dir }}/valkey-cli \
+      {% if valkey_tls_enabled | bool %}--tls --cacert {{ valkey_tls_ca_dest }}{% endif %} \
+      --json \
+      --user admin \
+      -p {{ valkey_sentinel_port }} \
+      -h "{{ inventory_hostname }}" \
+      -a "{{ valkey_user_sentineladmin_password }}" \
+      --no-auth-warning \
+      SENTINEL MASTERS
+  register: valkey_sentinel_masters
+  when: valkey_sentinel_is_running | bool
+  changed_when: false
+
+- name: Capture itentialmaster
+  ansible.builtin.set_fact:
+    valkey_itential_master: "{{ (valkey_sentinel_masters.stdout | from_json)[0] }}"
+  when: valkey_sentinel_is_running | bool
+
+- name: Get details for each monitored master
+  ansible.builtin.shell: |
+    set -o pipefail &&
+    {{ valkey_bin_dir }}/valkey-cli \
+      {% if valkey_tls_enabled | bool %}--tls --cacert {{ valkey_tls_ca_dest }}{% endif %} \
+      --json \
+      --user admin \
+      -p {{ valkey_sentinel_port }} \
+      -h "{{ inventory_hostname }}" \
+      -a "{{ valkey_user_sentineladmin_password }}" \
+      --no-auth-warning \
+      SENTINEL MASTER {{ valkey_itential_master.name }}
+  register: valkey_monitored_master
+  when: valkey_sentinel_is_running | bool
+  changed_when: false
+
+- name: Capture monitored master details
+  ansible.builtin.set_fact:
+    valkey_monitored_master_details: "{{ (valkey_monitored_master.stdout | from_json) }}"
+  when: valkey_sentinel_is_running | bool
+
+- name: Get known sentinels for each master
+  ansible.builtin.shell: |
+    set -o pipefail &&
+    {{ valkey_bin_dir }}/valkey-cli \
+      {% if valkey_tls_enabled | bool %}--tls --cacert {{ valkey_tls_ca_dest }}{% endif %} \
+      --json \
+      --user admin \
+      -p {{ valkey_sentinel_port }} \
+      -h "{{ inventory_hostname }}" \
+      -a "{{ valkey_user_sentineladmin_password }}" \
+      --no-auth-warning \
+      SENTINEL SENTINELS {{ valkey_itential_master.name }}
+  register: valkey_known_sentinels
+  when: valkey_sentinel_is_running | bool
+  failed_when: false
+  changed_when: false
+
+- name: Capture known sentinel details
+  ansible.builtin.set_fact:
+    valkey_known_sentinel_details: "{{ (valkey_known_sentinels.stdout | from_json) }}"
+  when: valkey_sentinel_is_running | bool
+
+- name: Get known replicas for each master
+  ansible.builtin.shell: |
+    set -o pipefail &&
+    {{ valkey_bin_dir }}/valkey-cli \
+      {% if valkey_tls_enabled | bool %}--tls --cacert {{ valkey_tls_ca_dest }}{% endif %} \
+      --json \
+      --user admin \
+      -p {{ valkey_sentinel_port }} \
+      -h "{{ inventory_hostname }}" \
+      -a "{{ valkey_user_sentineladmin_password }}" \
+      --no-auth-warning \
+      SENTINEL REPLICAS {{ valkey_itential_master.name }}
+  register: valkey_known_replicas
+  when: valkey_sentinel_is_running | bool
+  failed_when: false
+  changed_when: false
+
+- name: Capture known replica details
+  ansible.builtin.set_fact:
+    valkey_known_replica_details: "{{ (valkey_known_replicas.stdout | from_json) }}"
+  when: valkey_sentinel_is_running | bool
+
+- name: Check master status
+  ansible.builtin.shell: |
+    set -o pipefail &&
+    {{ valkey_bin_dir }}/valkey-cli \
+      {% if valkey_tls_enabled | bool %}--tls --cacert {{ valkey_tls_ca_dest }}{% endif %} \
+      --json \
+      --user admin \
+      -p {{ valkey_sentinel_port }} \
+      -h "{{ inventory_hostname }}" \
+      -a "{{ valkey_user_sentineladmin_password }}" \
+      --no-auth-warning \
+      SENTINEL CKQUORUM {{ valkey_itential_master.name }}
+  register: valkey_quorum_check
+  when: valkey_sentinel_is_running | bool
+  failed_when: false
+  changed_when: false
+
+- name: Capture known replica details
+  ansible.builtin.set_fact:
+    valkey_quorum_check_details: "{{ (valkey_quorum_check.stdout | from_json) }}"
+  when: valkey_sentinel_is_running | bool
+
+- name: Get Sentinel configuration
+  ansible.builtin.shell: |
+    set -o pipefail &&
+    {{ valkey_bin_dir }}/valkey-cli \
+      {% if valkey_tls_enabled | bool %}--tls --cacert {{ valkey_tls_ca_dest }}{% endif %} \
+      --json \
+      --user admin \
+      -p {{ valkey_sentinel_port }} \
+      -h "{{ inventory_hostname }}" \
+      -a "{{ valkey_user_sentineladmin_password }}" \
+      --no-auth-warning \
+      CONFIG GET '*'
+  register: valkey_sentinel_config
+  when: valkey_sentinel_is_running | bool
+  failed_when: false
+  changed_when: false
+
+- name: Check Sentinel configuration file
+  ansible.builtin.stat:
+    path: /etc/valkey/sentinel.conf
+  register: valkey_sentinel_conf_file
+  when: valkey_sentinel_is_running | bool
+
+- name: Get Sentinel configuration file permissions
+  ansible.builtin.shell: set -o pipefail && ls -lh /etc/valkey/sentinel.conf
+  register: valkey_sentinel_conf_permissions
+  when:
+    - valkey_sentinel_is_running | bool
+    - valkey_sentinel_conf_file.stat.exists | default(false)
+  changed_when: false
+
+- name: Check if Sentinel is using systemd
+  ansible.builtin.stat:
+    path: /usr/lib/systemd/system/valkey-sentinel.service
+  register: valkey_sentinel_systemd_file
+  when: valkey_sentinel_is_running | bool
+
+- name: Get Sentinel listening ports
+  ansible.builtin.shell: |
+    set -o pipefail && netstat -tlnp | grep sentinel | ss -tlnp | grep sentinel
+  register: valkey_sentinel_ports
+  when: valkey_sentinel_is_running | bool
+  failed_when: false
+  changed_when: false
+
+- name: Check Sentinel log file
+  ansible.builtin.shell: |
+    set -o pipefail &&
+    if [ -f /var/log/valkey/sentinel.log ]; then
+      tail -50 /var/log/valkey/sentinel.log
+    else
+      echo "Log file not found in standard location"
+    fi
+  register: valkey_sentinel_logs
+  when: valkey_sentinel_is_running | bool
+  changed_when: false
+
+# For unknown reasons there are control characters (^M) at the end of the
+# SENTINEL INFO values. This task will remove those characters.
+- name: Remove control characters from output
+  ansible.builtin.set_fact:
+    valkey_sentinel_info_clean: "{{ valkey_sentinel_info.stdout | regex_replace('\\r', '') }}"
+  when:
+    - valkey_sentinel_is_running | bool
+    - valkey_sentinel_info.rc is defined
+    - valkey_sentinel_info.rc == 0
+
+- name: Parse Sentinel INFO for key metrics
+  ansible.builtin.set_fact:
+    valkey_sentinel_metrics:
+      version: "{{ valkey_sentinel_info_clean | regex_search('valkey_version:(.+)', '\\1') }}"
+      mode: "{{ valkey_sentinel_info_clean | regex_search('valkey_mode:(.+)', '\\1') }}"
+      masters: "{{ valkey_sentinel_info_clean | regex_search('sentinel_masters:(.+)', '\\1') }}"
+  when:
+    - valkey_sentinel_is_running | bool
+    - valkey_sentinel_info.rc is defined
+    - valkey_sentinel_info.rc == 0
+
+# =========================================================================
+# Confirm all expected Sentinel users
+# =========================================================================
+- name: Get list of configured Sentinel users
+  ansible.builtin.shell: |
+    set -o pipefail &&
+    {{ valkey_bin_dir }}/valkey-cli \
+      {% if valkey_tls_enabled | bool %}--tls --cacert {{ valkey_tls_ca_dest }}{% endif %} \
+      --json \
+      --user admin \
+      -p {{ valkey_sentinel_port }} \
+      -h "{{ inventory_hostname }}" \
+      -a "{{ valkey_user_sentineladmin_password }}" \
+      --no-auth-warning \
+      ACL LIST
+  when:
+    - valkey_sentinel_is_running | bool
+    - valkey_sentinel_info.rc is defined
+    - valkey_sentinel_info.rc == 0
+  register: valkey_sentinel_acl_list
+  no_log: true
+  failed_when: false
+  changed_when: false
+
+- name: Parse Sentinel ACL list into structured format
+  ansible.builtin.set_fact:
+    valkey_sentinel_users: >-
+      {%- set result = [] -%}
+      {%- for acl_entry in (valkey_sentinel_acl_list.stdout | from_json) -%}
+        {%- set parts = acl_entry.split() -%}
+        {%- if parts | length >= 3 and parts[0] == 'user' -%}
+          {%- set user_obj = {'user': parts[1], 'enabled': (parts[2] == 'on')} -%}
+          {%- set _ = result.append(user_obj) -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ result }}
+  when:
+    - valkey_sentinel_is_running | bool
+    - valkey_sentinel_acl_list.rc is defined
+    - valkey_sentinel_acl_list.rc == 0
+
+- name: Verify the Sentinel user can login (not admin)
+  ansible.builtin.shell: |
+    set -o pipefail &&
+    {{ valkey_bin_dir }}/valkey-cli \
+      {% if valkey_tls_enabled | bool %}--tls --cacert {{ valkey_tls_ca_dest }}{% endif %} \
+      --user sentineluser \
+      -p {{ valkey_sentinel_port }} \
+      -h "{{ inventory_hostname }}" \
+      -a "{{ valkey_user_sentineluser_password }}" \
+      --no-auth-warning \
+      PING
+  register: valkey_sentinel_user_ping
+  no_log: true
+  failed_when: false
+  changed_when: false
+  when:
+    - valkey_sentinel_is_running | bool
+    - valkey_sentinel_acl_list.rc is defined
+    - valkey_sentinel_acl_list.rc == 0
+
+- name: Confirm "monitor" user login (Sentinel)
+  ansible.builtin.shell: |
+    set -o pipefail &&
+    {{ valkey_bin_dir }}/valkey-cli \
+      {% if valkey_tls_enabled | bool %}--tls --cacert {{ valkey_tls_ca_dest }}{% endif %} \
+      --user monitor \
+      -p {{ valkey_sentinel_port }} \
+      -h "{{ inventory_hostname }}" \
+      -a "{{ valkey_user_monitor_password }}" \
+      --no-auth-warning \
+      PING
+  register: valkey_sentinel_monitor_user_ping
+  failed_when: false
+  changed_when: false
+  when:
+    - valkey_monitor_user_enabled | bool
+    - valkey_user_monitor_password is truthy
+    - valkey_sentinel_is_running | bool
+
+# =========================================================================
+# Generate the report and copy to control node
+# =========================================================================
+- name: Generate validation report
+  ansible.builtin.template:
+    backup: true
+    dest: "{{ valkey_sentinel_certify_report_file }}"
+    group: "{{ valkey_group }}"
+    mode: "0665"
+    owner: "{{ valkey_owner }}"
+    src: valkey-validation-report.md.j2
+  when:
+    - valkey_sentinel_is_running | bool
+
+- name: Copy validation report to the control node
+  ansible.builtin.fetch:
+    dest: "{{ valkey_sentinel_certify_report_dir_local }}/"
+    fail_on_missing: false
+    flat: true
+    src: "{{ valkey_sentinel_certify_report_file }}"
+  when:
+    - valkey_sentinel_is_running | bool
+
+- name: Display report summary
+  ansible.builtin.debug:
+    msg:
+      - "Valkey validation complete for {{ inventory_hostname }}"
+      - "Overall Status: {{ 'PASSED ✓' if (valkey_sentinel_ping.rc == 0 and valkey_sentinel_process.rc == 0) else 'FAILED ✗' }}"
+      - "Report saved to: {{ valkey_sentinel_certify_report_file }} on both the remote and control nodes."
+  when:
+    - valkey_sentinel_is_running | bool

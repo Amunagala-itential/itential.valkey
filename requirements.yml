@@ -1,0 +1,6 @@
+---
+collections:
+  - name: ansible.posix
+    version: ">=0.0.1"
+  - name: itential.deployer
+    version: ">=4.0.0"
