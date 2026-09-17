@@ -50,27 +50,111 @@ This does not automatically install `itential.deployer` — install both:
 ansible-galaxy collection install itential.deployer itential.valkey
 ```
 
-## Quick Start
+## Getting Started
 
-Add a `valkey_master` group to your inventory alongside your existing `mongodb`/`platform`/
-`gateway` groups (see `itential.deployer`'s own README for those):
+This walks through deploying Valkey alongside the rest of the Itential stack (MongoDB,
+Platform, Gateway), using `itential.deployer`'s own bootstrap flow. If you've already got a
+working directory set up for `itential.deployer` (see its README's "Running the Deployer"
+section for the full explanation of each step below), skip to
+[3. Add Valkey to your inventory](#3-add-valkey-to-your-inventory).
+
+### 1. Install both collections
+
+```bash
+ansible-galaxy collection install itential.deployer itential.valkey
+```
+
+### 2. Set up your working directory
+
+Same layout `itential.deployer` uses — this collection doesn't need its own separate working
+directory.
+
+```bash
+mkdir -p <WORKING-DIR>/inventories/dev
+cd <WORKING-DIR>
+```
+
+`itential.valkey` has no artifacts to stage (Valkey installs from the OS's own package
+repositories, not an uploaded binary), so unlike Platform/Gateway there's no `files` directory
+or symlink step needed for it specifically. If you're also installing Platform/Gateway in the
+same run, follow `itential.deployer`'s "Determine Installation Artifacts Method" steps for
+those.
+
+### 3. Add Valkey to your inventory
+
+Add a `valkey_master` group (and `valkey_replica`/`valkey_sentinel` for HA — see
+[`docs/valkey_guide.md`](docs/valkey_guide.md)) to the **same** inventory file you're using
+for the rest of the stack. This is a full example combining Valkey with MongoDB and Platform,
+adapted from `itential.deployer`'s own example inventory:
 
 ```yaml
+# <WORKING-DIR>/inventories/dev/hosts
 all:
   vars:
     platform_release: 6
+    env: dev
+
   children:
     valkey_master:
       hosts:
-        <host1>:
-          ansible_host: <addr1>
+        host01.example.com:
+      vars:
+        valkey_tls_enabled: false
+
+    mongodb:
+      hosts:
+        host01.example.com:
+
+    platform:
+      hosts:
+        host01.example.com:
+      vars:
+        platform_encryption_key: <key>
+        platform_packages:
+          - https://registry.aws.itential.com/repository/PLATFORM/Platform%206.0.0/itential-platform-<version>.noarch.rpm
+        repository_username: <username>
+        repository_password: !vault |
+          $ANSIBLE_VAULT;1.1;AES123
+          ...
+
+        platform_mongo_url: mongodb://host01.example.com:27017/itential
+
+        # Point Platform at Valkey the same way it would point at Redis -- the client
+        # only speaks RESP and doesn't care which server product is on the other end.
+        platform_redis_host: host01.example.com
 ```
 
-Then run:
+Note that `host01.example.com` must be an EL9 (RHEL/Rocky/AlmaLinux) or Amazon Linux 2023 host
+— `valkey_master` fails fast on anything else. If you need Redis on an EL8 host instead, use
+`redis_master` and `itential.deployer`'s own `redis` role there.
+
+### 4. Verify, then install, then certify
 
 ```bash
-ansible-playbook itential.valkey.valkey -i <inventory>
+# Confirm the environment is ready (repo connectivity, host specs, etc.)
+ansible-playbook -i inventories/dev itential.deployer.verify
+ansible-playbook -i inventories/dev itential.valkey.verify_valkey
+
+# Install Valkey
+ansible-playbook -i inventories/dev itential.valkey.valkey -v
+
+# Install the rest of the stack (MongoDB, Platform, Gateway) -- unchanged from
+# itential.deployer's own flow, run separately since Valkey isn't wired into
+# itential.deployer.site
+ansible-playbook -i inventories/dev itential.deployer.platform_site -v
+
+# Confirm the installation and generate a certification report
+ansible-playbook -i inventories/dev itential.valkey.certify_valkey
+ansible-playbook -i inventories/dev itential.deployer.certify
 ```
+
+**&#9432; Known gap:** `itential.deployer`'s `os.yml` playbook (which installs baseline OS,
+security, and operational packages -- including whatever provides `firewalld`) does not yet
+include `valkey_master`/`valkey_replica`/`valkey_sentinel` in its target hosts. Until that's
+fixed upstream, a genuinely fresh host may need baseline OS packages installed by some other
+means first, or `roles/valkey`'s automatic firewalld port-opening simply won't have anything
+to act on (it degrades gracefully -- it skips opening the port rather than failing -- but the
+port then needs to be opened some other way).
 
 For Sentinel HA topologies, TLS configuration, offline installs, and the full variable
 reference, see [`docs/valkey_guide.md`](docs/valkey_guide.md) and the examples under
