@@ -24,9 +24,9 @@ be merged directly into `itential.deployer`, and this repository archived. See
 | Playbook | FQCN | Description |
 |----------|------|-------------|
 | `valkey.yml` | `itential.valkey.valkey` | Install Valkey on `valkey_master`/`valkey_replica`; Sentinel on `valkey_sentinel` hosts |
-| `verify_valkey.yml` | `itential.valkey.verify_valkey` | Pre-install verification for Valkey hosts |
-| `certify_valkey.yml` | `itential.valkey.certify_valkey` | Generate Valkey/Sentinel installation certification reports |
-| `download_packages_valkey.yml` | `itential.valkey.download_packages_valkey` | Download Valkey packages for offline install |
+| `verify.yml` | `itential.valkey.verify` | Pre-install verification for Valkey hosts |
+| `certify.yml` | `itential.valkey.certify` | Generate Valkey/Sentinel installation certification reports |
+| `download_packages.yml` | `itential.valkey.download_packages` | Download Valkey packages for offline install |
 
 ## Roles Summary
 
@@ -56,5 +56,4 @@ Installation section. This is declared in `galaxy.yml`'s `dependencies`.
 |----------|---------|---------|
 | `ansible-lint.yml` | push/PR to `main`, `dev` | Lint validation |
 | `role-readme-check.yml` | push/PR to `dev` | Fails the build if any `roles/*/` directory is missing a README (Ansible Galaxy requirement) |
-| `updateChangelog.yml` | GitHub release or manual | Updates the changelog |
-| `publish_ansible_collection.yml` | GitHub release or manual | Publish to Galaxy |
+| `publish_ansible_collection.yml` | GitHub release or manual | Bumps `galaxy.yml`'s version, regenerates `CHANGELOG.md`, and publishes to Galaxy (no separate changelog workflow -- that step lives here) |

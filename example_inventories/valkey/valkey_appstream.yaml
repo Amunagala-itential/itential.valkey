@@ -1,10 +1,11 @@
 ---
-# In this example, Valkey is installed and configured using the native EL9 AppStream package.
-# Unlike Redis, this role has only one install method -- there is no source-install or Remi
-# option -- so there is no equivalent "from source" / "from remi repo" example inventory here.
+# In this example, Valkey is installed and configured using the native OS package repositories
+# (the AppStream module on EL9, Amazon Linux 2023's own core repo). Unlike Redis, this role has
+# only one install method -- there is no source-install or Remi option -- so there is no
+# equivalent "from source" / "from remi repo" example inventory here.
 #
-# Valkey is only supported on RHEL/Rocky/AlmaLinux 9. A host on any other OS or major version
-# will fail validate-vars.yml immediately. Use the redis role on EL8.
+# Valkey is only supported on RHEL/Rocky/AlmaLinux 9 and Amazon Linux 2023. A host on any other
+# OS or major version will fail validate-vars.yml immediately. Use the redis role on EL8.
 all:
   vars:
     # The Platform release must be defined.
