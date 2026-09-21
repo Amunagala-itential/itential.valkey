@@ -12,7 +12,7 @@ license away from a fully open-source model. Valkey is protocol- and config-comp
 Redis: it speaks the same RESP protocol, uses the same `redis.conf`-style configuration
 grammar, and implements the same Sentinel protocol and ACL directives. This is why the
 `valkey` role and its configuration files look nearly identical to the `redis` role's -- under
-the hood, Valkey behaves the same way Redis does for everything this deployer configures
+the hood, Valkey behaves the same way Redis does for everything this role configures
 (authentication, TLS, replication, Sentinel failover). The Itential Platform connects to
 either backend the same way, since Platform's client only speaks RESP and does not care which
 server product is on the other end.
@@ -23,9 +23,9 @@ server product is on the other end.
 supported install path for EL8:
 
 - EL8's AppStream does not ship a Valkey module stream at all.
-- EPEL8 does carry a Valkey package, but this deployer standardizes on the native OS package
+- EPEL8 does carry a Valkey package, but this role standardizes on the native OS package
   repositories rather than mixing package sources, so EPEL8 is not used.
-- Compiling Valkey from source would work on EL8, but this deployer deliberately does not
+- Compiling Valkey from source would work on EL8, but this role deliberately does not
   support source installs for Valkey at all (unlike `redis_install_from_source`, there is no
   equivalent `valkey_install_from_source` flag or source-install code path in this role).
 
@@ -81,7 +81,7 @@ installation. It is highly recommended that sensitive data be encrypted using An
 ## TLS
 
 TLS is **enabled by default** for Valkey and Valkey Sentinel. Both are controlled by a single
-flag (`valkey_tls_enabled`). When TLS is enabled, the deployer enforces TLSv1.3 only and
+flag (`valkey_tls_enabled`). When TLS is enabled, this role enforces TLSv1.3 only and
 disables plain-text connections by setting `port 0` and listening exclusively on `tls-port`.
 
 Client certificate authentication is disabled by default (`valkey_tls_auth_clients: no`). The
@@ -150,9 +150,10 @@ uses a template to generate a Valkey Sentinel config file. It modifies the Valke
 to turn off protected-mode. It assumes that the first host defined in the inventory file is
 the initial primary. It will update the config file for the non-primary Valkey servers to
 replicate from the primary using hostname. It will start the Valkey Sentinel service when
-complete. Replication and Sentinel failover mechanics are unchanged from Redis -- see the
-`redis_guide.md` Replication section for the full explanation of replica priority and quorum
-calculation, which apply identically here (`valkey_replica_priority`, `valkey_sentinel_quorum`).
+complete. Replication and Sentinel failover mechanics are unchanged from Redis -- see
+[itential.deployer's `docs/redis_guide.md`](https://github.com/itential/deployer/blob/main/docs/redis_guide.md)
+Replication section for the full explanation of replica priority and quorum calculation, which
+apply identically here (`valkey_replica_priority`, `valkey_sentinel_quorum`).
 
 ## Automatic Valkey Maxmemory Calculation
 
@@ -198,8 +199,9 @@ The following table lists the default variables located in `roles/valkey/default
 
 These follow the exact same shape as the `redis` role's equivalents, `valkey_`-prefixed
 instead of `redis_`-prefixed (e.g. `valkey_user_admin_password`, `valkey_replicaof`,
-`valkey_sentinel_quorum`, `valkey_pki_base_dir`). See `redis_guide.md`'s corresponding tables
-for full descriptions -- the semantics are identical.
+`valkey_sentinel_quorum`, `valkey_pki_base_dir`). See
+[itential.deployer's `docs/redis_guide.md`](https://github.com/itential/deployer/blob/main/docs/redis_guide.md)'s
+corresponding tables for full descriptions -- the semantics are identical.
 
 ### Offline Variables
 

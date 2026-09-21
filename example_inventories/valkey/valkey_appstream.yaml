@@ -18,5 +18,5 @@ all:
         valkey01.example.com:
       vars:
         # TLS is disabled in this example. Set valkey_tls_enabled: true and
-        # valkey_pki_src_dir to enable TLS. See the tls_guide.md for details.
+        # valkey_pki_src_dir to enable TLS. See docs/valkey_guide.md's TLS section for details.
         valkey_tls_enabled: false
